@@ -6,6 +6,8 @@ from scipy.special import logsumexp
 import random
 import numpy as np
 import csv
+import itertools
+
 #%%
 with open('data/nltcs/nltcs.train.data', "r") as file:
     reader = csv.reader(file, delimiter=',')
@@ -68,7 +70,8 @@ class BinaryCLT :
 
 clt = BinaryCLT(data, 8)
 # %%
-# TODO move into object
+# TODO move below functions into object
+
 def get_tree(self):
     predecessors = self.dir_tree
     for i, val in enumerate(predecessors[1]):
@@ -77,31 +80,81 @@ def get_tree(self):
             break
     return predecessors[1]
 
+# TODO weghalen en doen volgens assignment
+def _get_params(self):
+    if not hasattr(self, 'cpt') or self.cpt is None or self.cpt.size == 0:
+        self.cpt = np.empty((self.num_rv, 2, 2))
+        for rv in range(self.num_rv):
+            predecessor = get_tree(self)[rv]
+            if predecessor == -1:
+                self.cpt[rv][0], self.cpt[rv][1] = self.probabilities[rv], self.probabilities[rv]
+            else:
+                jdt = self.joint_distribution[rv][predecessor]
+                probabilities_predecessor = self.probabilities[predecessor]
+                self.cpt[rv][0][0] = jdt[0][0] / probabilities_predecessor[0]
+                self.cpt[rv][0][1] = jdt[0][1] / probabilities_predecessor[1]
+                self.cpt[rv][1][0] = jdt[1][0] / probabilities_predecessor[0]
+                self.cpt[rv][1][1] = jdt[1][1] / probabilities_predecessor[1]
+    else:
+        print('CPT already created')
+    return self.cpt
+
 def get_log_params(self):
-    cpt = np.empty((self.num_rv, 2, 2))
-    for rv in range(self.num_rv):
-        predecessor = get_tree(self)[rv]
-        if predecessor == -1:
-            cpt[rv][0], cpt[rv][1] = self.probabilities[rv], self.probabilities[rv]
-        else:
-            jdt = self.joint_distribution[rv][predecessor]
-            probabilities_predecessor = self.probabilities[predecessor]
-            cpt[rv][0][0] = jdt[0][0] / probabilities_predecessor[0]
-            cpt[rv][0][1] = jdt[0][1] / probabilities_predecessor[1]
-            cpt[rv][1][0] = jdt[1][0] / probabilities_predecessor[0]
-            cpt[rv][1][1] = jdt[1][1] / probabilities_predecessor[1]
-    return np.log(cpt)
+    # TODO reshape output to adhere to assignment description (switch last two dimensions)
+    # return np.log(self._get_params())
+    return np.log(_get_params(self))
 
 def log_prob(self, x, exhaustive=False):
-    pass
-
+    # cpt = self._get_params()
+    # tree = self.get_tree()
+    cpt = _get_params(self)
+    tree = get_tree(self)
+    result = np.empty((len(x), 1))
+    if exhaustive:
+        combinations = list(itertools.product([0, 1], repeat=16))
+        if not hasattr(self, 'jpmf') or self.jpmf is None or self.jpmf == {}:    
+            self.jpmf = {}
+            for combination in combinations:
+                combination_prob = 1
+                for rv, value in enumerate(combination):
+                    parent_rv = tree[rv]
+                    if parent_rv == -1:
+                        value_conditional = value
+                    else:
+                        value_conditional = combination[parent_rv]
+                    combination_prob *= cpt[rv][value][value_conditional]
+                self.jpmf[combination] = combination_prob
+        for q_i, query in enumerate(x):
+            combinations_to_sum_probs_for = []
+            for combination in combinations:
+                include_combination = True
+                for q_rv, q_value in enumerate(query):
+                    if not np.isnan(q_value) and combination[q_rv] != q_value:
+                        include_combination = False
+                    if not include_combination:
+                        break
+                if include_combination:
+                    combinations_to_sum_probs_for.append(combination)
+            probability = 0
+            for combination in combinations_to_sum_probs_for:
+                probability += self.jpmf[combination] 
+            result[q_i][0] = probability
+            print(q_i)
+    else:
+        # TODO implement efficient algorithm
+        pass
+    return result
+    # TODO return np log
+        
 def sample(self, n_samples):
     pass
+
+print(sum(log_prob(clt, np.array(list(itertools.product([0, 1], repeat=16))), exhaustive=True)))
 # %%
 predecessors = get_tree(clt)   
 print(predecessors)
 # %%
 print(np.exp(get_log_params(clt)))
 # %%
-print(clt.probabilities)
-# %%
+import itertools
+print(len(itertools.product([0, 1], repeat=16)))
