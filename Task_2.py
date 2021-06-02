@@ -66,11 +66,11 @@ class BinaryCLT :
 
         tree = minimum_spanning_tree(-mutual_information_table)
         self.dir_tree = breadth_first_order(tree, root if root is not None else random.randint(0, self.num_rv), directed=False) 
-        pass
 
 clt = BinaryCLT(data, 8)
 # %%
 # TODO move below functions into object
+# TODO remove print statements
 
 def get_tree(self):
     predecessors = self.dir_tree
@@ -139,7 +139,7 @@ def log_prob(self, x, exhaustive=False):
             for combination in combinations_to_sum_probs_for:
                 probability += self.jpmf[combination] 
             result[q_i][0] = probability
-            print(q_i)
+            print(q_i / len(x))
     else:
         # TODO implement efficient algorithm
         pass
@@ -147,9 +147,27 @@ def log_prob(self, x, exhaustive=False):
     # TODO return np log
         
 def sample(self, n_samples):
-    pass
+    samples = np.empty((n_samples, self.num_rv), dtype=int)
+    ordering = self.dir_tree[0]
+    cpt = _get_params(self)
+    tree = get_tree(self)
+    for sample in samples:
+        for i, rv in enumerate(ordering):
+            prob_rv_is_1 = None
+            if i == 0:
+                prob_rv_is_1 = self.probabilities[rv][1]
+            else:
+                parent_rv = tree[rv]
+                conditional_value = sample[parent_rv]
+                prob_rv_is_1 = cpt[rv][1][conditional_value]
+            random_int = random.random()
+            if random_int <= prob_rv_is_1:
+                sample[rv] = 1
+            else:
+                sample[rv] = 0
+    return samples
 
-print(sum(log_prob(clt, np.array(list(itertools.product([0, 1], repeat=16))), exhaustive=True)))
+print(sample(clt, 5))
 # %%
 predecessors = get_tree(clt)   
 print(predecessors)
@@ -158,3 +176,5 @@ print(np.exp(get_log_params(clt)))
 # %%
 import itertools
 print(len(itertools.product([0, 1], repeat=16)))
+# %%
+print(sum(log_prob(clt, np.array(list(itertools.product([0, 1], repeat=16))), exhaustive=True)))
