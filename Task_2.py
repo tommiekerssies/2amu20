@@ -19,17 +19,17 @@ print(data)
 class BinaryCLT :
     def __init__ (self, data, root=None, alpha=0.01):
         # Construct tree
-        num_samples = len(data) + 4 * alpha
+        num_samples = len(data) 
         self.num_rv = len(data[0])
         self.probabilities = np.empty((self.num_rv, 2))
         self.joint_distribution = np.empty((self.num_rv, self.num_rv, 2, 2))
         for rv_i in range(self.num_rv):
-            # first compute simple probability of 0 or 1
+            # first compute simple probability of 0 or 1, marginal probabilities
             times_rv_i_is_1 = 0
             for sample in data:
                 if sample[rv_i] == 1:
                     times_rv_i_is_1 += 1
-            prob_rv_i_is_1 = (2 * alpha + times_rv_i_is_1) / num_samples
+            prob_rv_i_is_1 = (2 * alpha + times_rv_i_is_1) / (num_samples + 4 * alpha)
             self.probabilities[rv_i][0] = 1 - prob_rv_i_is_1
             self.probabilities[rv_i][1] = prob_rv_i_is_1
 
@@ -47,10 +47,10 @@ class BinaryCLT :
                             rv_i_0_rv_j_1 += 1
                         else:
                             rv_i_0_rv_j_0 += 1
-                self.joint_distribution[rv_i][rv_j][0][0] = rv_i_0_rv_j_0 / num_samples
-                self.joint_distribution[rv_i][rv_j][0][1] = rv_i_0_rv_j_1 / num_samples
-                self.joint_distribution[rv_i][rv_j][1][0] = rv_i_1_rv_j_0 / num_samples
-                self.joint_distribution[rv_i][rv_j][1][1] = rv_i_1_rv_j_1 / num_samples
+                self.joint_distribution[rv_i][rv_j][0][0] = rv_i_0_rv_j_0 / (num_samples + 4 * alpha)
+                self.joint_distribution[rv_i][rv_j][0][1] = rv_i_0_rv_j_1 / (num_samples + 4 * alpha)
+                self.joint_distribution[rv_i][rv_j][1][0] = rv_i_1_rv_j_0 / (num_samples + 4 * alpha)
+                self.joint_distribution[rv_i][rv_j][1][1] = rv_i_1_rv_j_1 / (num_samples + 4 * alpha)
  
         mutual_information_table = np.empty((self.num_rv, self.num_rv))
         for i in range(self.num_rv): 
@@ -59,6 +59,8 @@ class BinaryCLT :
                 if i == j: # else nan values because of log 0, think MI should be 0: https://stats.stackexchange.com/questions/161429/why-would-perfectly-similar-data-have-0-mutual-information/423640#:~:text=Intuitively%2C%20mutual%20information%20measures%20the,reduces%20uncertainty%20about%20the%20other.&text=As%20a%20result%2C%20in%20this,of%20Y%20(or%20X).
                     mutual_information_table[i][j] = 0
                 else:
+                    # TODO replace multiplications with log additions
+                    # and additions with log-sum-exp operations
                     mutual_information_table[i][j] =jdt[0][0]*np.log(jdt[0][0]/((jdt[0][0]+jdt[1][0])*(jdt[0][0]+jdt[0][1]))) + \
                                                     jdt[0][1]*np.log(jdt[0][1]/((jdt[0][1]+jdt[1][1])*(jdt[0][0]+jdt[0][1]))) + \
                                                     jdt[1][0]*np.log(jdt[1][0]/((jdt[0][0]+jdt[1][0])*(jdt[1][0]+jdt[1][1]))) + \
@@ -81,7 +83,30 @@ def get_tree(self):
     return predecessors[1]
 
 # TODO weghalen en doen volgens assignment
-def _get_params(self):
+# def _get_params(self):
+#     if not hasattr(self, 'cpt') or self.cpt is None or self.cpt.size == 0:
+#         self.cpt = np.empty((self.num_rv, 2, 2))
+#         for rv in range(self.num_rv):
+#             predecessor = get_tree(self)[rv]
+#             if predecessor == -1:
+#                 self.cpt[rv][0], self.cpt[rv][1] = self.probabilities[rv], self.probabilities[rv]
+#             else:
+#                 jdt = self.joint_distribution[rv][predecessor]
+#                 probabilities_predecessor = self.probabilities[predecessor]
+#                 self.cpt[rv][0][0] = jdt[0][0] / probabilities_predecessor[0]
+#                 self.cpt[rv][0][1] = jdt[0][1] / probabilities_predecessor[1]
+#                 self.cpt[rv][1][0] = jdt[1][0] / probabilities_predecessor[0]
+#                 self.cpt[rv][1][1] = jdt[1][1] / probabilities_predecessor[1]
+#     else:
+#         print('CPT already created')
+#     return self.cpt 
+
+# def get_log_params(self):
+#     # TODO reshape output to adhere to assignment description (switch last two dimensions)
+#     # return np.log(self._get_params())
+#     return np.log(_get_params(self)) 
+
+def get_log_params(self):
     if not hasattr(self, 'cpt') or self.cpt is None or self.cpt.size == 0:
         self.cpt = np.empty((self.num_rv, 2, 2))
         for rv in range(self.num_rv):
@@ -96,18 +121,15 @@ def _get_params(self):
                 self.cpt[rv][1][0] = jdt[1][0] / probabilities_predecessor[0]
                 self.cpt[rv][1][1] = jdt[1][1] / probabilities_predecessor[1]
     else:
+        # TODO remove print
         print('CPT already created')
-    return self.cpt
-
-def get_log_params(self):
-    # TODO reshape output to adhere to assignment description (switch last two dimensions)
-    # return np.log(self._get_params())
-    return np.log(_get_params(self))
+    return np.log(self.cpt)
 
 def log_prob(self, x, exhaustive=False):
     # cpt = self._get_params()
     # tree = self.get_tree()
-    cpt = _get_params(self)
+    #cpt = _get_params(self)
+    cpt = get_log_params(self)
     tree = get_tree(self)
     result = np.empty((len(x), 1))
     if exhaustive:
@@ -167,14 +189,20 @@ def sample(self, n_samples):
                 sample[rv] = 0
     return samples
 
-print(sample(clt, 5))
+#print(sample(clt, 5))
 # %%
 predecessors = get_tree(clt)   
 print(predecessors)
 # %%
 print(np.exp(get_log_params(clt)))
 # %%
+print(get_log_params(clt))
+# %%
 import itertools
 print(len(itertools.product([0, 1], repeat=16)))
 # %%
 print(sum(log_prob(clt, np.array(list(itertools.product([0, 1], repeat=16))), exhaustive=True)))
+
+#%%
+log_prob(clt, [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], exhaustive=True)
+# %%
