@@ -129,9 +129,10 @@ def log_prob(self, x, exhaustive=False):
     # cpt = self._get_params()
     # tree = self.get_tree()
     #cpt = _get_params(self)
-    cpt = get_log_params(self)
+    cpt = np.exp(get_log_params(self))
     tree = get_tree(self)
     result = np.empty((len(x), 1))
+    
     if exhaustive:
         combinations = list(itertools.product([0, 1], repeat=16))
         if not hasattr(self, 'jpmf') or self.jpmf is None or self.jpmf == {}:    
@@ -162,16 +163,74 @@ def log_prob(self, x, exhaustive=False):
                 probability += self.jpmf[combination] 
             result[q_i][0] = probability
             print(q_i / len(x))
+            
     else:
-        # TODO implement efficient algorithm
-        pass
+        for q_i, query in enumerate(x):
+            nan_rvs = []
+            
+            for q_rv, q_value in enumerate(query):
+                if np.isnan(q_value):
+                    nan_rvs.append(q_rv)
+
+            # TODO can we remove this?
+            if len(nan_rvs) == 0:
+                # TODO result[q_i][0] = self.log_prob...
+                result[q_i] = log_prob(self, [query], exhaustive=True)[0]
+                continue
+
+            big_cpts = []
+            for nan_rv in nan_rvs:
+                nan_rv_cpt = cpt[nan_rv]
+                children = [child for child, parent in enumerate(tree) if parent == nan_rv]
+                child_cpts = [cpt[child] for child in children]
+                #[(1, [0,1], 0.5)] rv, children, prob
+                big_cpt = []
+                if len(children) == 0:
+                    for parent_val in [0,1]:
+                        marginalized_prob = nan_rv_cpt[0][parent_val] + nan_rv_cpt[1][parent_val]
+                        big_cpt.append((parent_val, (), marginalized_prob))
+                else:
+                    for child_value_combination in itertools.product([0, 1], repeat=len(children)):
+                        for parent_val in [0,1]:
+                            marginalized_prob = 0
+                            for nan_rv_value in [0,1]:
+                                probability = nan_rv_cpt[nan_rv_value][parent_val]
+                                for child_idx, child_value in enumerate(child_value_combination):
+                                    probability *= child_cpts[child_idx][child_value][nan_rv_value]
+                                marginalized_prob += probability
+                            big_cpt.append((parent_val, child_value_combination, marginalized_prob))
+                big_cpts.append(big_cpt)
+            
+            probability = 1
+            for nan_rv_i, big_cpt in enumerate(big_cpts):
+                nan_rv = nan_rvs[nan_rv_i]
+                parent_nan_rv = tree[nan_rv]
+                children = [child for child, parent in enumerate(tree) if parent == nan_rv]
+                for big_cpt_tuple in big_cpt:
+                    if big_cpt_tuple[0] == query[parent_nan_rv]:
+                        children_values_same = True
+                        for child_idx, child in enumerate(children):
+                            if big_cpt_tuple[1][child_idx] != query[child]:
+                                children_values_same = False
+                                break
+                        if children_values_same:
+                            probability *= big_cpt_tuple[2]
+                            break
+
+            for q_rv, q_value in enumerate(query):
+                parent_rv = tree[q_rv]
+                if not np.isnan(q_value) and not np.isnan(query[parent_rv]):
+                    probability *= cpt[q_rv][q_value][query[parent_rv]]
+
+            result[q_i][0] = probability
+
     return result
     # TODO return np log
         
 def sample(self, n_samples):
     samples = np.empty((n_samples, self.num_rv), dtype=int)
     ordering = self.dir_tree[0]
-    cpt = _get_params(self)
+    cpt = np.exp(get_log_params(self))
     tree = get_tree(self)
     for sample in samples:
         for i, rv in enumerate(ordering):
@@ -189,7 +248,9 @@ def sample(self, n_samples):
                 sample[rv] = 0
     return samples
 
-#print(sample(clt, 5))
+
+log_prob(clt, [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, np.nan, 1, 1, 1]], exhaustive=False)
+
 # %%
 predecessors = get_tree(clt)   
 print(predecessors)
@@ -204,5 +265,17 @@ print(len(itertools.product([0, 1], repeat=16)))
 print(sum(log_prob(clt, np.array(list(itertools.product([0, 1], repeat=16))), exhaustive=True)))
 
 #%%
-log_prob(clt, [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], exhaustive=True)
+import time
+start = time.time()
+log_prob(clt, [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, np.nan, 1, 1, 1]], exhaustive=True)
+#print(time.time() - start)
+
+# %%
+tree = get_tree(clt) 
+nan_rv = 4
+children = [child for child, parent in enumerate(tree) if parent == nan_rv]
+print(children)
+# %%
+for i in [0,1]:
+    print(i)
 # %%
